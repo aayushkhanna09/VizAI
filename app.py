@@ -15,7 +15,7 @@ def load_data(uploaded_file):
 
 def main():
     st.set_page_config(page_title="Data Viz Lab Project", layout="wide")
-    st.title("AI-Powered Business Data Analytics Tool")
+    st.title("VizAI - AI-Powered Business Data Visualization and Interactive Analytics Tool")
 
     with st.sidebar:
         st.header("1. Upload Data")
