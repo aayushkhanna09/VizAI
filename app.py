@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 from pandasai_litellm.litellm import LiteLLM
 import pandasai as pai
 
+# Load environment variables immediately
+load_dotenv()
+
 def load_data(uploaded_file):
     try:
         if uploaded_file.name.endswith('.csv'):
@@ -17,7 +20,7 @@ def load_data(uploaded_file):
     return None
 
 def main():
-    st.set_page_config(page_title="Data Viz Lab Project", layout="wide")
+    st.set_page_config(page_title="LLM+DV project", layout="wide")
     st.title("AI-Powered Business Data Analytics Tool")
 
     with st.sidebar:
@@ -30,7 +33,6 @@ def main():
             if df is not None:
                 st.sidebar.success("File uploaded successfully!")
                 
-                # --- DAY 2: Data Profiling ---
                 st.write("### Raw Data Preview")
                 st.dataframe(df.head(10))
                 
@@ -52,7 +54,6 @@ def main():
                     
                 st.markdown("---")
                 
-                # --- DAY 3: Manual Visualization ---
                 st.subheader("Create Custom Charts")
                 columns = df.columns.tolist()
                 
@@ -77,6 +78,33 @@ def main():
                         st.plotly_chart(fig, use_container_width=True)
                     except Exception as e:
                         st.error(f"Could not generate chart: {e}")
+                        st.markdown("---")
+                
+                
+                st.subheader("Test AI Connection")
+                
+                api_key = os.getenv("GEMINI_API_KEY")
+                
+                if not api_key:
+                    st.warning("⚠️ GEMINI_API_KEY is missing. Please add it to your .env file.")
+                else:
+                    try:
+                        # 1. Initialize the LLM
+                        llm = LiteLLM(model="gemini/gemini-2.5-flash", api_key=api_key)
+                        pai.config.set({"llm": llm})
+                        
+                        # 2. Create the SmartDataframe
+                        sdf = pai.SmartDataframe(df)
+                        
+                        # 3. Hardcoded Test
+                        if st.button("Test AI: Count Rows"):
+                            with st.spinner("Asking Gemini..."):
+                                response = sdf.chat("How many rows are in this dataset?")
+                                st.success("AI Response:")
+                                st.write(response)
+                                
+                    except Exception as e:
+                        st.error(f"Failed to initialize AI: {e}")
 
 if __name__ == "__main__":
     main()
