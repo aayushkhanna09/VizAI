@@ -41,6 +41,13 @@ def main():
             else:
                 # Basic cleaning to prevent LLM/Plotly errors
                 df = df.dropna(how='all')
+                # Fill missing numeric values with the mean
+                numeric_cols = df.select_dtypes(include=['number']).columns
+                df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
+                    
+                # Fill missing text/categorical values with 'Unknown'
+                categorical_cols = df.select_dtypes(exclude=['number']).columns
+                df[categorical_cols] = df[categorical_cols].fillna('Unknown')
                 st.sidebar.success("File uploaded successfully!")
 
                 # Ensure the folder for AI-generated charts exists
