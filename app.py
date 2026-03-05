@@ -28,6 +28,23 @@ def main():
                 st.sidebar.success("File uploaded successfully!")
                 st.write("### Raw Data Preview")
                 st.dataframe(df.head(10))
+                st.markdown("---")
+                
+                # 1. Generate Summary Statistics
+                st.subheader("Statistical Summary")
+                st.write(df.describe())
+                
+                # 2. Identify Data Types and Missing Values
+                st.subheader("Data Types & Missing Values")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Data Types**")
+                    st.dataframe(df.dtypes.astype(str))
+                    
+                with col2:
+                    st.write("**Missing Values**")
+                    st.dataframe(df.isnull().sum())
 
 if __name__ == "__main__":
     main()
