@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
 import plotly.express as px
 from dotenv import load_dotenv
 from pandasai_litellm.litellm import LiteLLM
 import pandasai as pai
+from sklearn.ensemble import IsolationForest, RandomForestRegressor
+from fpdf import FPDF
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -24,14 +28,17 @@ def load_data(uploaded_file):
     return None
 
 def main():
-    st.set_page_config(page_title="LLM+DVtools Project", layout="wide")
-    st.title("VizAI - AI-Powered Business Data Visualization and Interactive Analytics Tool")
+    st.set_page_config(page_title="VizAI Analytics", layout="wide")
+    st.title("📊 VizAI - Advanced Business Data Analytics Tool")
 
     with st.sidebar:
         st.header("1. Upload Data")
         uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx", "xls"])
         st.markdown("---")
-        st.markdown("**Instructions:**\n1. Upload your dataset.\n2. Explore the summary stats.\n3. Build custom charts.\n4. Ask the AI questions about your data.")
+        
+        # --- PHASE 2: Export Module (Placeholder setup) ---
+        st.header("2. Export & Report")
+        export_container = st.container()
 
     if uploaded_file is not None:
         df = load_data(uploaded_file)
@@ -39,64 +46,76 @@ def main():
             if df.empty or len(df.columns) == 0:
                 st.error("The uploaded file is empty. Please add data before uploading.")
             else:
-                # Basic cleaning to prevent LLM/Plotly errors
+                # Data Cleaning
                 df = df.dropna(how='all')
-                # Fill missing numeric values with the mean
                 numeric_cols = df.select_dtypes(include=['number']).columns
                 df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
-                    
-                # Fill missing text/categorical values with 'Unknown'
                 categorical_cols = df.select_dtypes(exclude=['number']).columns
                 df[categorical_cols] = df[categorical_cols].fillna('Unknown')
                 st.sidebar.success("File uploaded successfully!")
 
-                # Ensure the folder for AI-generated charts exists
+                # --- PHASE 2: Export Implementations ---
+                with export_container:
+                    # 1. CSV Export
+                    csv = df.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Cleaned CSV", data=csv, file_name="vizai_cleaned_data.csv", mime="text/csv")
+                    
+                    # 2. Basic PDF Report Generation
+                    if st.button("📄 Generate Basic PDF Report"):
+                        with st.spinner("Generating PDF..."):
+                            pdf = FPDF()
+                            pdf.add_page()
+                            pdf.set_font("Arial", 'B', 16)
+                            pdf.cell(200, 10, txt="VizAI Automated Data Report", ln=1, align='C')
+                            pdf.set_font("Arial", size=12)
+                            pdf.ln(10)
+                            pdf.cell(200, 10, txt=f"Total Rows: {len(df)}", ln=1)
+                            pdf.cell(200, 10, txt=f"Total Columns: {len(df.columns)}", ln=1)
+                            
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                                pdf.output(tmp_file.name)
+                                with open(tmp_file.name, "rb") as f:
+                                    pdf_data = f.read()
+                            st.download_button("⬇️ Download PDF", data=pdf_data, file_name="vizai_report.pdf", mime="application/pdf")
+
+                # Ensure charts folder exists
                 os.makedirs("exports/charts", exist_ok=True)
                 
-                # Initialize AI and SmartDataframe ONCE outside the tabs for better performance
+                # AI Setup
                 api_key = os.getenv("GEMINI_API_KEY")
                 sdf = None
                 if not api_key:
                     st.warning("⚠️ GEMINI_API_KEY is missing. Please add it to your .env file.")
                 else:
                     try:
-                        # Connecting PandasAI to Google Gemini via LiteLLM
                         llm = LiteLLM(model="gemini/gemini-2.5-flash", api_key=api_key)
                         pai.config.set({"llm": llm, "save_charts": True, "save_charts_path": "exports/charts"})
                         sdf = pai.SmartDataframe(df)
                     except Exception as e:
                         st.error(f"Failed to initialize AI: {e}")
 
-                # Create Tabs for clean UI layout
-                tab1, tab2, tab3 = st.tabs(["Data Profiling", "Manual Visualization", "AI Chat"])
+                # Create Tabs (Added Tab 4 for Advanced Analytics)
+                tab1, tab2, tab3, tab4 = st.tabs(["Data Profiling", "Manual Visualization", "AI Chat", "Advanced Analytics 🚀"])
 
                 # --- TAB 1: Data Profiling ---
                 with tab1:
                     st.subheader("Raw Data Preview")
                     st.dataframe(df.head(10))
-                    
                     st.markdown("---")
                     col1, col2 = st.columns(2)
-                    
                     with col1:
                         st.subheader("Statistical Summary")
                         st.write(df.describe())
-                        
                     with col2:
                         st.subheader("Data Types & Missing Values")
-                        info_df = pd.DataFrame({
-                            'Data Type': df.dtypes.astype(str),
-                            'Missing Values': df.isnull().sum()
-                        })
+                        info_df = pd.DataFrame({'Data Type': df.dtypes.astype(str), 'Missing Values': df.isnull().sum()})
                         st.dataframe(info_df)
 
                 # --- TAB 2: Manual Visualization ---
                 with tab2:
                     st.subheader("Create Custom Charts")
                     columns = df.columns.tolist()
-                    
                     col_x, col_y, col_type = st.columns(3)
-                    
                     with col_x:
                         x_axis = st.selectbox("Select X-axis", options=["Select..."] + columns)
                     with col_y:
@@ -112,7 +131,6 @@ def main():
                                 fig = px.line(df, x=x_axis, y=y_axis)
                             elif chart_type == "Scatter Plot":
                                 fig = px.scatter(df, x=x_axis, y=y_axis)
-                                
                             st.plotly_chart(fig, use_container_width=True)
                         except Exception as e:
                             st.error(f"Could not generate chart: {e}")
@@ -120,14 +138,11 @@ def main():
                 # --- TAB 3: AI Chat Interface ---
                 with tab3:
                     st.subheader("💬 Ask your Data")
-                    
                     if sdf is None:
                         st.info("AI functionality is disabled. Please check your API key.")
                     else:
                         if "messages" not in st.session_state:
                             st.session_state.messages = []
-
-                        # Render previous messages
                         for message in st.session_state.messages:
                             with st.chat_message(message["role"]):
                                 if message.get("is_image"):
@@ -135,8 +150,7 @@ def main():
                                 else:
                                     st.markdown(message["content"])
 
-                        # Process User Input
-                        if prompt := st.chat_input("E.g., What is the total revenue? Show me a bar chart of sales by region."):
+                        if prompt := st.chat_input("Ask a question about your data..."):
                             st.session_state.messages.append({"role": "user", "content": prompt, "is_image": False})
                             with st.chat_message("user"):
                                 st.markdown(prompt)
@@ -145,19 +159,89 @@ def main():
                                 with st.spinner("Analyzing data..."):
                                     try:
                                         response = sdf.chat(prompt)
-                                        
                                         if isinstance(response, str) and response.endswith('.png'):
                                             st.image(response)
                                             st.session_state.messages.append({"role": "assistant", "content": response, "is_image": True})
                                         else:
                                             st.write(response)
                                             st.session_state.messages.append({"role": "assistant", "content": str(response), "is_image": False})
-                                            
                                     except Exception as e:
-                                        st.error("The AI couldn't process that request. Try rephrasing.")
+                                        st.error("The AI couldn't process that request.")
                                         st.error(str(e))
+
+                # --- TAB 4: Advanced Analytics (PHASE 2) ---
+                with tab4:
+                    st.subheader("🔍 Anomaly Detection")
+                    st.write("Automatically flag unusual spikes or drops in your numeric data.")
+                    if st.button("Run Anomaly Detection"):
+                        if len(numeric_cols) > 0:
+                            with st.spinner("Scanning for anomalies..."):
+                                iso_model = IsolationForest(contamination=0.05, random_state=42)
+                                df['Anomaly_Score'] = iso_model.fit_predict(df[numeric_cols])
+                                anomalies = df[df['Anomaly_Score'] == -1]
+                                
+                                st.error(f"⚠️ Detected {len(anomalies)} anomalies in the dataset.")
+                                st.dataframe(anomalies.drop(columns=['Anomaly_Score']))
+                                
+                                # Plot anomalies if we have at least 2 numeric columns
+                                if len(numeric_cols) >= 2:
+                                    fig_anom = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1], 
+                                                          color=df['Anomaly_Score'].astype(str),
+                                                          color_discrete_map={'-1': 'red', '1': 'blue'},
+                                                          title="Anomaly Distribution (Red = Anomaly)")
+                                    st.plotly_chart(fig_anom, use_container_width=True)
+                        else:
+                            st.warning("No numeric columns available for anomaly detection.")
+
+                    st.markdown("---")
+                    
+                    st.subheader("📈 Predictive Forecasting")
+                    st.write("Forecast future trends using Random Forest Machine Learning.")
+                    
+                    col_dt, col_tg, col_hz = st.columns(3)
+                    with col_dt:
+                        date_col = st.selectbox("Select Date Column", ["Select..."] + df.columns.tolist())
+                    with col_tg:
+                        target_col = st.selectbox("Select Target Metric", ["Select..."] + numeric_cols.tolist())
+                    with col_hz:
+                        horizon = st.slider("Forecast Horizon (Days)", 7, 90, 30)
+
+                    if st.button("Generate Forecast"):
+                        if date_col != "Select..." and target_col != "Select...":
+                            try:
+                                with st.spinner("Training ML Model..."):
+                                    # Prepare Data
+                                    ml_df = df.copy()
+                                    ml_df[date_col] = pd.to_datetime(ml_df[date_col])
+                                    ml_df = ml_df.sort_values(by=date_col)
+                                    ml_df['ordinal'] = ml_df[date_col].apply(lambda x: x.toordinal())
+                                    
+                                    X = ml_df[['ordinal']]
+                                    y = ml_df[target_col]
+                                    
+                                    # Train Model
+                                    model = RandomForestRegressor(n_estimators=100, random_state=42)
+                                    model.fit(X, y)
+                                    
+                                    # Predict
+                                    last_date = ml_df[date_col].max()
+                                    future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, horizon + 1)]
+                                    future_X = np.array([d.toordinal() for d in future_dates]).reshape(-1, 1)
+                                    predictions = model.predict(future_X)
+                                    
+                                    # Plotting Data Setup
+                                    ml_df['Type'] = 'Historical'
+                                    future_df = pd.DataFrame({date_col: future_dates, target_col: predictions, 'Type': 'Forecast'})
+                                    combined_df = pd.concat([ml_df[[date_col, target_col, 'Type']], future_df])
+                                    
+                                    fig_pred = px.line(combined_df, x=date_col, y=target_col, color='Type', 
+                                                       line_dash='Type', title=f"{target_col} Forecast for next {horizon} days")
+                                    st.plotly_chart(fig_pred, use_container_width=True)
+                            except Exception as e:
+                                st.error("Error generating forecast. Ensure the Date column contains valid dates.")
+                        else:
+                            st.warning("Please select both a Date column and a Target Metric.")
     else:
-        # Onboarding screen before a file is uploaded
         st.info("👋 Welcome! Please upload a .csv or .xlsx file on the sidebar to begin analyzing your data.")
 
 if __name__ == "__main__":
