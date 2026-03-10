@@ -9,6 +9,7 @@ import pandasai as pai
 from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from fpdf import FPDF
 import tempfile
+import datetime
 
 # Load environment variables
 load_dotenv()
@@ -46,6 +47,10 @@ def main():
             if df.empty or len(df.columns) == 0:
                 st.error("The uploaded file is empty. Please add data before uploading.")
             else:
+                # --- Capture Pre-Cleaning Stats ---
+                pre_clean_rows = len(df)
+                pre_clean_missing = df.isnull().sum()
+
                 # Data Cleaning
                 df = df.dropna(how='all')
                 numeric_cols = df.select_dtypes(include=['number']).columns
@@ -58,25 +63,92 @@ def main():
                 with export_container:
                     # 1. CSV Export
                     csv = df.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download Cleaned CSV", data=csv, file_name="vizai_cleaned_data.csv", mime="text/csv")
+                    st.download_button("Download Cleaned CSV", data=csv, file_name="vizai_cleaned_data.csv", mime="text/csv")
                     
-                    # 2. Basic PDF Report Generation
-                    if st.button("📄 Generate Basic PDF Report"):
-                        with st.spinner("Generating PDF..."):
-                            pdf = FPDF()
-                            pdf.add_page()
-                            pdf.set_font("Arial", 'B', 16)
-                            pdf.cell(200, 10, txt="VizAI Automated Data Report", ln=1, align='C')
-                            pdf.set_font("Arial", size=12)
-                            pdf.ln(10)
-                            pdf.cell(200, 10, txt=f"Total Rows: {len(df)}", ln=1)
-                            pdf.cell(200, 10, txt=f"Total Columns: {len(df.columns)}", ln=1)
-                            
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                                pdf.output(tmp_file.name)
-                                with open(tmp_file.name, "rb") as f:
-                                    pdf_data = f.read()
-                            st.download_button("⬇️ Download PDF", data=pdf_data, file_name="vizai_report.pdf", mime="application/pdf")
+                    # 2. Comprehensive PDF Report Generation
+                    if st.button("Generate Executive PDF Report"):
+                        with st.spinner("Compiling comprehensive report..."):
+                            try:
+                                pdf = FPDF()
+                                pdf.add_page()
+                                
+                                # --- TITLE & METADATA ---
+                                pdf.set_font("Arial", 'B', 16)
+                                pdf.cell(0, 10, "VizAI Executive Data Report", ln=1, align='C')
+                                pdf.set_font("Arial", 'I', 10)
+                                pdf.cell(0, 10, f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=1, align='C')
+                                pdf.ln(5)
+                                
+                                # --- SECTION 1: PRE-CLEANING OVERVIEW ---
+                                pdf.set_font("Arial", 'B', 12)
+                                pdf.cell(0, 10, "1. Pre-Cleaning Data Overview", ln=1)
+                                pdf.set_font("Arial", '', 11)
+                                pdf.cell(0, 8, f"Initial Records (Rows): {pre_clean_rows}", ln=1)
+                                pdf.cell(0, 8, f"Total Features (Columns): {len(df.columns)}", ln=1)
+                                
+                                cols_with_missing_pre = pre_clean_missing[pre_clean_missing > 0]
+                                if cols_with_missing_pre.empty:
+                                    pdf.cell(0, 8, "Initial Data Quality: Excellent (No missing values).", ln=1)
+                                else:
+                                    pdf.cell(0, 8, "Missing values detected before cleaning:", ln=1)
+                                    for col, count in cols_with_missing_pre.items():
+                                        pdf.cell(0, 8, f"  - {col}: {count} missing", ln=1)
+                                pdf.ln(5)
+                                
+                                # --- SECTION 2: POST-CLEANING OVERVIEW ---
+                                pdf.set_font("Arial", 'B', 12)
+                                pdf.cell(0, 10, "2. Post-Cleaning Data Overview", ln=1)
+                                pdf.set_font("Arial", '', 11)
+                                pdf.cell(0, 8, f"Final Records (Rows): {len(df)}", ln=1)
+                                
+                                missing_info = df.isnull().sum()
+                                cols_with_missing = missing_info[missing_info > 0]
+                                if cols_with_missing.empty:
+                                    pdf.cell(0, 8, "Data Quality: Excellent (No missing values detected post-cleaning).", ln=1)
+                                else:
+                                    pdf.cell(0, 8, "Remaining missing values:", ln=1)
+                                    for col, count in cols_with_missing.items():
+                                        pdf.cell(0, 8, f"  - {col}: {count} missing", ln=1)
+                                pdf.ln(5)
+                                
+                                # --- SECTION 3: KEY STATISTICS ---
+                                pdf.set_font("Arial", 'B', 12)
+                                pdf.cell(0, 10, "3. Key Statistical Metrics (Top Numeric Fields)", ln=1)
+                                pdf.set_font("Arial", '', 11)
+                                for col in numeric_cols[:5]: # Limit to top 5
+                                    mean_val = df[col].mean()
+                                    max_val = df[col].max()
+                                    min_val = df[col].min()
+                                    pdf.cell(0, 8, f"{col.capitalize()}: Mean = {mean_val:.2f} | Min = {min_val:.2f} | Max = {max_val:.2f}", ln=1)
+                                pdf.ln(5)
+                                
+                                # --- SECTION 4: VISUALIZATIONS ---
+                                pdf.set_font("Arial", 'B', 12)
+                                pdf.cell(0, 10, "4. AI-Generated Visualizations", ln=1)
+                                pdf.set_font("Arial", '', 11)
+                                
+                                chart_dir = "exports/charts"
+                                if os.path.exists(chart_dir):
+                                    charts = [f for f in os.listdir(chart_dir) if f.endswith('.png')]
+                                    if not charts:
+                                        pdf.cell(0, 8, "No charts were generated by the AI during this session.", ln=1)
+                                    else:
+                                        pdf.cell(0, 8, f"Successfully captured {len(charts)} chart(s).", ln=1)
+                                        for chart in charts:
+                                            pdf.add_page()
+                                            pdf.set_font("Arial", 'B', 12)
+                                            pdf.cell(0, 10, f"Exhibit: {chart}", ln=1)
+                                            pdf.image(os.path.join(chart_dir, chart), x=10, y=30, w=190)
+                                
+                                # --- OUTPUT PREPARATION ---
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                                    pdf.output(tmp_file.name)
+                                    with open(tmp_file.name, "rb") as f:
+                                        pdf_data = f.read()
+                                        
+                                st.download_button("Download Executive PDF", data=pdf_data, file_name="vizai_executive_report.pdf", mime="application/pdf")
+                            except Exception as e:
+                                st.error(f"Error generating PDF: {e}")
 
                 # Ensure charts folder exists
                 os.makedirs("exports/charts", exist_ok=True)
