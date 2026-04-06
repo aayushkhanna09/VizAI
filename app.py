@@ -30,7 +30,7 @@ def load_data(uploaded_file):
 
 def main():
     st.set_page_config(page_title="VizAI Analytics", layout="wide")
-    st.title("📊 VizAI - Advanced Business Data Analytics Tool")
+    st.title("📊 VizAI - Business Data Analytics Tool")
 
     with st.sidebar:
         st.header("1. Upload Data")
